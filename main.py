@@ -1,19 +1,18 @@
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
+from aiogram.filters import Command
 
 TOKEN = "8747129285:AAG-IXig35A1p1LTQBjEoJX2Uycr_6Uuavo"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Хранилище задач
+# Хранилище
 user_tasks = {}
+user_state = {}
 
-# Клавиатура
+# Клавиатуры
 main_kb = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="➕ Добавить задачу")],
@@ -22,103 +21,108 @@ main_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Состояния
-class TaskStates(StatesGroup):
-    adding_task = State()
-    managing_task = State()
+action_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="✔️ Готово")],
+        [KeyboardButton(text="🗑 Удалить")],
+        [KeyboardButton(text="🔙 Назад")]
+    ],
+    resize_keyboard=True
+)
 
+# START
 @dp.message(Command("start"))
 async def start(msg: types.Message):
+    user_state[msg.from_user.id] = None
     await msg.answer(
         "Привет. Я Todox.\n\n"
-        "Я помогу тебе не развалить свою жизнь (хотя бы список дел).\n\n"
-        "Ты можешь:\n"
-        "➕ Добавлять задачи\n"
-        "📋 Смотреть список\n"
-        "✔️ Отмечать выполненные\n\n"
-        "Начни с кнопок ниже.",
+        "Я помогу тебе держать жизнь под контролем.\n\n"
+        "➕ Добавляй задачи\n"
+        "📋 Смотри список\n"
+        "✔️ Отмечай выполненные",
         reply_markup=main_kb
     )
 
-@dp.message(lambda msg: msg.text == "➕ Добавить задачу")
-async def add_task(msg: types.Message, state: FSMContext):
-    await msg.answer("Пиши задачу. Без философии, просто текст.")
-    await state.set_state(TaskStates.adding_task)
+# ДОБАВИТЬ ЗАДАЧУ
+@dp.message(lambda m: m.text == "➕ Добавить задачу")
+async def add_task(msg: types.Message):
+    user_state[msg.from_user.id] = "adding"
+    await msg.answer("Напиши задачу.")
 
-@dp.message(TaskStates.adding_task)
-async def save_task(msg: types.Message, state: FSMContext):
+@dp.message(lambda m: user_state.get(m.from_user.id) == "adding")
+async def save_task(msg: types.Message):
     user_id = msg.from_user.id
+
     user_tasks.setdefault(user_id, []).append({
         "text": msg.text,
         "done": False
     })
-    
-    await msg.answer("Задача сохранена. Поздравляю, ты стал чуть менее бесполезным.")
-    await state.clear()
 
-@dp.message(lambda msg: msg.text == "📋 Список задач")
-async def list_tasks(msg: types.Message, state: FSMContext):
+    user_state[user_id] = None
+    await msg.answer("Задача добавлена.", reply_markup=main_kb)
+
+# СПИСОК ЗАДАЧ
+@dp.message(lambda m: m.text == "📋 Список задач")
+async def list_tasks(msg: types.Message):
     user_id = msg.from_user.id
     tasks = user_tasks.get(user_id, [])
-    
+
     if not tasks:
-        await msg.answer("У тебя пусто. Либо ты идеален, либо ленив.")
+        await msg.answer("Пусто.", reply_markup=main_kb)
         return
-    
+
     text = "Твои задачи:\n\n"
     for i, t in enumerate(tasks):
         status = "✔️" if t["done"] else "❌"
         text += f"{i+1}. {t['text']} [{status}]\n"
-    
-    await msg.answer(text + "\n\nНапиши номер задачи чтобы изменить.")
-    await state.set_state(TaskStates.managing_task)
 
-@dp.message(TaskStates.managing_task)
-async def manage_task(msg: types.Message, state: FSMContext):
+    user_state[user_id] = "choosing"
+    await msg.answer(text + "\n\nНапиши номер задачи.")
+
+# ВЫБОР ЗАДАЧИ
+@dp.message(lambda m: user_state.get(m.from_user.id) == "choosing")
+async def choose_task(msg: types.Message):
     user_id = msg.from_user.id
     tasks = user_tasks.get(user_id, [])
-    
+
     if not msg.text.isdigit():
-        await msg.answer("Напиши номер задачи (только цифры).")
+        await msg.answer("Нужна цифра.")
         return
-    
-    index = int(msg.text) - 1
-    if index < 0 or index >= len(tasks):
-        await msg.answer("Такой задачи нет.")
-        return
-    
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="✔️ Готово")],
-            [KeyboardButton(text="🗑 Удалить")]
-        ],
-        resize_keyboard=True
-    )
-    
-    await msg.answer("Выбери действие:", reply_markup=kb)
-    await state.update_data(task_index=index)
 
-@dp.message(TaskStates.managing_task, lambda msg: msg.text in ["✔️ Готово", "🗑 Удалить"])
-async def action(msg: types.Message, state: FSMContext):
+    index = int(msg.text) - 1
+
+    if index < 0 or index >= len(tasks):
+        await msg.answer("Нет такой задачи.")
+        return
+
+    user_state[user_id] = f"action_{index}"
+    await msg.answer("Выбери действие:", reply_markup=action_kb)
+
+# ДЕЙСТВИЯ
+@dp.message(lambda m: user_state.get(m.from_user.id, "").startswith("action_"))
+async def task_action(msg: types.Message):
     user_id = msg.from_user.id
     tasks = user_tasks.get(user_id, [])
-    data = await state.get_data()
-    index = data.get("task_index")
-    
-    if index is None or index < 0 or index >= len(tasks):
-        await msg.answer("Что-то пошло не так. Попробуй ещё раз.")
-        await state.clear()
-        return
-    
+
+    index = int(user_state[user_id].split("_")[1])
+
     if msg.text == "✔️ Готово":
         tasks[index]["done"] = True
-        await msg.answer("Отмечено. Ты сделал хоть что-то.")
+        await msg.answer("Готово.")
+
     elif msg.text == "🗑 Удалить":
         tasks.pop(index)
-        await msg.answer("Удалено. Как будто этого и не было.")
-    
-    await state.clear()
+        await msg.answer("Удалено.")
 
+    elif msg.text == "🔙 Назад":
+        user_state[user_id] = None
+        await msg.answer("Назад.", reply_markup=main_kb)
+        return
+
+    user_state[user_id] = None
+    await msg.answer("Ок.", reply_markup=main_kb)
+
+# СТАРТ БОТА
 async def main():
     await dp.start_polling(bot)
 
