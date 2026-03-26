@@ -59,9 +59,9 @@ async def start(msg: types.Message):
     text = (
         "Привет.\n\n"
         "Я <b>Todox</b> — твой список задач.\n\n"
-        "→ Добавляй дела\n"
-        "→ Отмечай выполненные\n"
-        "→ Держи порядок\n\n"
+        "• Добавляй дела\n"
+        "• Отмечай выполненные\n"
+        "• Держи порядок\n\n"
         "<i>Начни с кнопок ниже</i>"
     )
 
@@ -99,7 +99,7 @@ async def list_tasks(msg: types.Message):
         await smart_send(msg, "→ Пока пусто", main_kb)
         return
 
-    text = "≡ <b>Твои задачи:</b>\n\n"
+    text = "≡ <b>Ваши задачи:</b>\n\n"
 
     for i, t in enumerate(tasks):
         status = "✓" if t["done"] else "×"
