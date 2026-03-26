@@ -3,11 +3,16 @@ import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
+from aiogram.client.default import DefaultBotProperties
 
 TOKEN = "8747129285:AAG-IXig35A1p1LTQBjEoJX2Uycr_6Uuavo"
 ADMIN_ID = 5893181200
 
-bot = Bot(token=TOKEN, parse_mode="HTML")
+bot = Bot(
+    token=TOKEN,
+    default=DefaultBotProperties(parse_mode="HTML")
+)
+
 dp = Dispatcher()
 
 # Хранилища
@@ -20,25 +25,19 @@ users_db = {}
 def update_user(user_id):
     users_db[user_id] = int(time.time())
 
+
 # Клавиатуры
 def get_main_kb(user_id):
+    buttons = [
+        [KeyboardButton(text="＋ Добавить")],
+        [KeyboardButton(text="≡ Список")]
+    ]
+
     if user_id == ADMIN_ID:
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="＋ Добавить")],
-                [KeyboardButton(text="≡ Список")],
-                [KeyboardButton(text="⚙ Админ")]
-            ],
-            resize_keyboard=True
-        )
-    else:
-        return ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="＋ Добавить")],
-                [KeyboardButton(text="≡ Список")]
-            ],
-            resize_keyboard=True
-        )
+        buttons.append([KeyboardButton(text="⚙ Админ")])
+
+    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+
 
 action_kb = ReplyKeyboardMarkup(
     keyboard=[
@@ -57,6 +56,7 @@ admin_kb = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True
 )
+
 
 # Умная отправка
 async def smart_send(msg: types.Message, text: str, kb=None):
@@ -83,13 +83,13 @@ async def smart_send(msg: types.Message, text: str, kb=None):
 async def start(msg: types.Message):
     user_id = msg.from_user.id
     update_user(user_id)
-    user_state[user_id] = None
+    user_state[user_id] = ""
 
     text = (
         "Привет.\n\n"
         "→ Добавляй задачи\n"
         "→ Следи за списком\n"
-        "→ Закрывай выполненное\n"
+        "→ Закрывай выполненное"
     )
 
     await smart_send(msg, text, get_main_kb(user_id))
@@ -98,9 +98,11 @@ async def start(msg: types.Message):
 # ДОБАВИТЬ
 @dp.message(lambda m: m.text == "＋ Добавить")
 async def add_task(msg: types.Message):
-    update_user(msg.from_user.id)
-    user_state[msg.from_user.id] = "adding"
+    user_id = msg.from_user.id
+    update_user(user_id)
+    user_state[user_id] = "adding"
     await smart_send(msg, "→ Напиши задачу")
+
 
 @dp.message(lambda m: user_state.get(m.from_user.id) == "adding")
 async def save_task(msg: types.Message):
@@ -112,7 +114,7 @@ async def save_task(msg: types.Message):
         "done": False
     })
 
-    user_state[user_id] = None
+    user_state[user_id] = ""
     await smart_send(msg, "✓ Добавлено", get_main_kb(user_id))
 
 
@@ -140,14 +142,24 @@ async def list_tasks(msg: types.Message):
     await smart_send(msg, text)
 
 
-# ACTION (важно выше choosing)
-@dp.message(lambda m: user_state.get(m.from_user.id, "").startswith("action_"))
+# ACTION (исправлено)
+@dp.message(lambda m: str(user_state.get(m.from_user.id, "")).startswith("action_"))
 async def task_action(msg: types.Message):
     user_id = msg.from_user.id
     update_user(user_id)
 
     tasks = user_tasks.get(user_id, [])
-    index = int(user_state[user_id].split("_")[1])
+    state = user_state.get(user_id, "")
+
+    if not state.startswith("action_"):
+        return
+
+    index = int(state.split("_")[1])
+
+    if index >= len(tasks):
+        await smart_send(msg, "→ Ошибка индекса")
+        user_state[user_id] = ""
+        return
 
     if msg.text == "✓ Готово":
         tasks[index]["done"] = True
@@ -158,7 +170,7 @@ async def task_action(msg: types.Message):
         await smart_send(msg, "× Удалено", get_main_kb(user_id))
 
     elif msg.text == "← Назад":
-        user_state[user_id] = None
+        user_state[user_id] = ""
         await smart_send(msg, "← Назад", get_main_kb(user_id))
         return
 
@@ -166,7 +178,7 @@ async def task_action(msg: types.Message):
         await smart_send(msg, "→ Используй кнопки", action_kb)
         return
 
-    user_state[user_id] = None
+    user_state[user_id] = ""
 
 
 # ВЫБОР
@@ -188,10 +200,9 @@ async def choose_task(msg: types.Message):
     await smart_send(msg, text, action_kb)
 
 
-# АДМИНКА
-@dp.message(lambda m: m.text == "⚙ Админ" and m.from_user.id == ADMIN_ID)
+# АДМИНКА (фикс символа)
+@dp.message(lambda m: "Админ" in m.text and m.from_user.id == ADMIN_ID)
 async def admin_panel(msg: types.Message):
-    update_user(msg.from_user.id)
     user_state[msg.from_user.id] = "admin"
     await smart_send(msg, "⚙ Админ панель", admin_kb)
 
@@ -200,7 +211,8 @@ async def admin_panel(msg: types.Message):
 @dp.message(lambda m: m.text == "📢 Рассылка" and m.from_user.id == ADMIN_ID)
 async def mailing_start(msg: types.Message):
     user_state[msg.from_user.id] = "mailing"
-    await smart_send(msg, "→ Отправь текст или фото")
+    await smart_send(msg, "→ Отправь сообщение или фото")
+
 
 @dp.message(lambda m: user_state.get(m.from_user.id) == "mailing")
 async def mailing_send(msg: types.Message):
@@ -212,11 +224,12 @@ async def mailing_send(msg: types.Message):
                 await bot.send_photo(uid, msg.photo[-1].file_id, caption=msg.caption or "")
             else:
                 await bot.send_message(uid, msg.text)
+
             sent += 1
         except:
             pass
 
-    user_state[msg.from_user.id] = None
+    user_state[msg.from_user.id] = ""
     await smart_send(msg, f"✓ Отправлено: {sent}", admin_kb)
 
 
@@ -235,11 +248,11 @@ async def users_list(msg: types.Message):
 # НАЗАД
 @dp.message(lambda m: m.text == "← Назад")
 async def back(msg: types.Message):
-    user_state[msg.from_user.id] = None
+    user_state[msg.from_user.id] = ""
     await start(msg)
 
 
-# ЛОГ АКТИВНОСТИ
+# ТРЕК ВСЕХ
 @dp.message()
 async def track(msg: types.Message):
     update_user(msg.from_user.id)
@@ -248,6 +261,7 @@ async def track(msg: types.Message):
 # СТАРТ
 async def main():
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
