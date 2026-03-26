@@ -3,7 +3,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 
-TOKEN = "8747129285:AAG-IXig35A1p1LTQBjEoJX2Uycr_6Uuavo"
+TOKEN = "ТВОЙ_ТОКЕН"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -36,7 +36,6 @@ async def start(msg: types.Message):
     user_state[msg.from_user.id] = None
     await msg.answer(
         "Привет. Я Todox.\n\n"
-        "Я помогу тебе держать жизнь под контролем.\n\n"
         "➕ Добавляй задачи\n"
         "📋 Смотри список\n"
         "✔️ Отмечай выполненные",
@@ -79,15 +78,11 @@ async def list_tasks(msg: types.Message):
     user_state[user_id] = "choosing"
     await msg.answer(text + "\n\nНапиши номер задачи.")
 
-# ВЫБОР ЗАДАЧИ
-@dp.message(lambda m: user_state.get(m.from_user.id) == "choosing")
+# ВЫБОР ЗАДАЧИ (фикс тут)
+@dp.message(lambda m: user_state.get(m.from_user.id) == "choosing" and m.text.isdigit())
 async def choose_task(msg: types.Message):
     user_id = msg.from_user.id
     tasks = user_tasks.get(user_id, [])
-
-    if not msg.text.isdigit():
-        await msg.answer("Нужна цифра.")
-        return
 
     index = int(msg.text) - 1
 
@@ -98,11 +93,15 @@ async def choose_task(msg: types.Message):
     user_state[user_id] = f"action_{index}"
     await msg.answer("Выбери действие:", reply_markup=action_kb)
 
-# ДЕЙСТВИЯ
+# ДЕЙСТВИЯ (фикс тут)
 @dp.message(lambda m: user_state.get(m.from_user.id, "").startswith("action_"))
 async def task_action(msg: types.Message):
     user_id = msg.from_user.id
     tasks = user_tasks.get(user_id, [])
+
+    # защита от мусора
+    if not user_state.get(user_id, "").startswith("action_"):
+        return
 
     index = int(user_state[user_id].split("_")[1])
 
@@ -119,10 +118,14 @@ async def task_action(msg: types.Message):
         await msg.answer("Назад.", reply_markup=main_kb)
         return
 
+    else:
+        await msg.answer("Выбери кнопку.")
+        return
+
     user_state[user_id] = None
     await msg.answer("Ок.", reply_markup=main_kb)
 
-# СТАРТ БОТА
+# СТАРТ
 async def main():
     await dp.start_polling(bot)
 
