@@ -57,11 +57,11 @@ async def start(msg: types.Message):
     user_state[msg.from_user.id] = None
 
     text = (
-        "Привет.\n\n"
+        "Приветик!!\n\n"
         "Я <b>Todox</b> — твой список задач.\n\n"
-        "→ Добавляй дела\n"
-        "→ Отмечай выполненные\n"
-        "→ Держи порядок\n\n"
+        "• Добавляй дела\n"
+        "• Отмечай выполненные\n"
+        "• Держи порядок\n\n"
         "<i>Начни с кнопок ниже</i>"
     )
 
@@ -72,7 +72,7 @@ async def start(msg: types.Message):
 @dp.message(lambda m: m.text == "＋ Добавить")
 async def add_task(msg: types.Message):
     user_state[msg.from_user.id] = "adding"
-    await smart_send(msg, "→ Напиши задачу", None)
+    await smart_send(msg, "Напиши задачу", None)
 
 
 @dp.message(lambda m: user_state.get(m.from_user.id) == "adding")
@@ -86,7 +86,7 @@ async def save_task(msg: types.Message):
 
     user_state[user_id] = None
 
-    await smart_send(msg, "✓ Задача добавлена", main_kb)
+    await smart_send(msg, "✓ Задача успешно добавлена", main_kb)
 
 
 # СПИСОК
